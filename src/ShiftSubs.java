@@ -1,7 +1,8 @@
 import java.awt.EventQueue;
 
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
-import javax.swing.JTextField;
+import javax.swing.JOptionPane;
 import javax.swing.JButton;
 
 import java.awt.event.ActionListener;
@@ -13,22 +14,23 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.sql.Time;
-import java.util.Date;
 import java.util.regex.Pattern;
+
 import javax.swing.JLabel;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
 
 public class ShiftSubs {
 
 	private JFrame frmShiftSubsTo;
-	private JTextField pathTF;
-	private JTextField delayTF;
-	private String absolutePath;
 	private int delay;
 	private BufferedReader in;
 	private BufferedWriter out;
-	private JLabel lblPath;
 	private JLabel lblDelay;
+	private JFileChooser fileChooser;
+	private File before, after;
+	private JSpinner spinner;
 
 	/**
 	 * Launch the application.
@@ -58,27 +60,21 @@ public class ShiftSubs {
 	 */
 	private void initialize() {
 		frmShiftSubsTo = new JFrame();
-		frmShiftSubsTo.setTitle("Shift subs to DELAY seconds");
-		frmShiftSubsTo.setBounds(100, 100, 450, 215);
+		frmShiftSubsTo.setTitle("Shift subtitles");
+		frmShiftSubsTo.setBounds(100, 100, 219, 215);
 		frmShiftSubsTo.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frmShiftSubsTo.getContentPane().setLayout(null);
-
-		pathTF = new JTextField();
-		pathTF.setBounds(80, 50, 339, 20);
-		frmShiftSubsTo.getContentPane().add(pathTF);
-		pathTF.setColumns(10);
-
-		delayTF = new JTextField();
-		delayTF.setBounds(80, 97, 115, 20);
-		frmShiftSubsTo.getContentPane().add(delayTF);
-		delayTF.setColumns(10);
+		
+		fileChooser = new JFileChooser();
+		fileChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+		fileChooser.addChoosableFileFilter(new FileNameExtensionFilter("Subtitle Files", "srt"));
 
 		JButton btnMakeShift = new JButton("Make shift");
+		btnMakeShift.setEnabled(false);
 		btnMakeShift.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent arg0) {
-				absolutePath = pathTF.getText();
-				delay = Integer.parseInt(delayTF.getText());
-				File before = new File(absolutePath).getAbsoluteFile(), after = new File("new.srt").getAbsoluteFile();
+				delay = Integer.parseInt(spinner.getValue().toString());
+				after = new File("new.srt").getAbsoluteFile();
 				try {
 					in = new BufferedReader(new FileReader(before));
 					out = new BufferedWriter(new FileWriter(after));
@@ -92,66 +88,85 @@ public class ShiftSubs {
 				}
 				before.delete();
 				after.renameTo(before);
-				delayTF.setText("OK");
+				JOptionPane.showMessageDialog( frmShiftSubsTo, "Done!");
 			}
 		});
-		btnMakeShift.setBounds(80, 153, 115, 23);
+		btnMakeShift.setBounds(25, 127, 154, 39);
 		frmShiftSubsTo.getContentPane().add(btnMakeShift);
 		
-		lblPath = new JLabel("Path to *.srt:");
-		lblPath.setBounds(10, 49, 72, 23);
-		frmShiftSubsTo.getContentPane().add(lblPath);
-		
 		lblDelay = new JLabel("Delay:");
-		lblDelay.setBounds(33, 92, 49, 30);
+		lblDelay.setBounds(49, 75, 49, 41);
 		frmShiftSubsTo.getContentPane().add(lblDelay);
+		
+		JButton btnSelectTargetsrt = new JButton("Select target *.srt file");
+		btnSelectTargetsrt.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				int result = fileChooser.showOpenDialog(frmShiftSubsTo);
+				if (result == JFileChooser.APPROVE_OPTION) {
+					before = fileChooser.getSelectedFile();
+					if(before.getAbsolutePath().endsWith(".srt")){
+						btnMakeShift.setEnabled(true);
+						spinner.setEnabled(true);
+					} else{
+						btnMakeShift.setEnabled(false);
+						spinner.setEnabled(false);
+						JOptionPane.showMessageDialog( frmShiftSubsTo, "Selected file is not *.srt!");
+					}
+				}
+			}
+		});
+		btnSelectTargetsrt.setBounds(25, 25, 154, 39);
+		frmShiftSubsTo.getContentPane().add(btnSelectTargetsrt);
+		
+		spinner = new JSpinner();
+		spinner.setEnabled(false);
+		spinner.setModel(new SpinnerNumberModel(0, -60, 60, 1));
+		spinner.setBounds(98, 80, 51, 36);
+		frmShiftSubsTo.getContentPane().add(spinner);
 	}
 
 	private void shift() throws IOException {
 		String str;
 		StringBuffer sb;
-		int h = 0, m = 0, s = 0, t = 0;
+		int h = 0, m = 0, s = 0, timeOfShift = 0;
 		while (true) {
 			sb = new StringBuffer();
 			str = in.readLine();
+//			out.append("È");
+//			out.flush();
 			while (true) {
 				if (str == null)
 					return;
-				if("504".equals(str)){
-					h=0;
-					m=0;
-					s=0;
-				}
 				if (!Pattern.compile(".*-->.*").matcher(String.valueOf(str))
 						.matches()){
-					out.append(str + "\n");
+					out.append(new String(str + "\n"));
 					out.flush();
 				}
 				else
 					break;
 				str = in.readLine();
 			}
-			shiftOnDelay(str, sb, h, m, s, t);
+			shiftOnDelay(str, sb, h, m, s, timeOfShift);
 		}
 	}
 	
-	private void shiftOnDelay(String str, StringBuffer sb, int h, int m, int s,int t) throws IOException{
+	private void shiftOnDelay(String str, StringBuffer sb, int h, int m, int s, int timeOfShift) throws IOException{
 		String[] result = str.split(",");
 		String[] time = result[0].split(":");
-		t = Integer.parseInt(time[0]) * 3600 + Integer.parseInt(time[1])
+		timeOfShift = Integer.parseInt(time[0]) * 3600 + Integer.parseInt(time[1])
 				* 60 + Integer.parseInt(time[2]) + delay;
-		h = t / 3600;
-		m = t % 3600 / 60;
-		s = t % 60;
+		h = timeOfShift / 3600;
+		m = timeOfShift % 3600 / 60;
+		s = timeOfShift % 60;
 		sb.append(String.format("%02d:%02d:%02d,", h, m, s));
 		time = result[1].split(" ");
 		sb.append(time[0] + " " + time[1] + " ");
 		time = time[2].split(":");
-		t = Integer.parseInt(time[0]) * 3600 + Integer.parseInt(time[1])
+		timeOfShift = Integer.parseInt(time[0]) * 3600 + Integer.parseInt(time[1])
 				* 60 + Integer.parseInt(time[2]) + delay;
-		h = t / 3600;
-		m = t % 3600 / 60;
-		s = t % 60;
+		h = timeOfShift / 3600;
+		m = timeOfShift % 3600 / 60;
+		s = timeOfShift % 60;
 		sb.append(String.format("%02d:%02d:%02d,%s\n", h, m, s, result[2]));
 		out.append(sb);
 		out.flush();
